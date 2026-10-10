@@ -1,19 +1,19 @@
 
 import { betterAuth } from "better-auth";
-import { mongodbAdapter } from "better-auth/adapters/mongodb";
+import { mongodbAdapter } from "@better-auth/mongo-adapter";
 import { MongoClient } from "mongodb";
 
-const mongoUri = process.env.MONGODB_URI;
+const uri = process.env.MONGODB_URI;
 
-if (!mongoUri) {
-  throw new Error("MONGODB_URI is missing from .env.local");
+if (!uri) {
+  throw new Error("MONGODB_URI is missing");
 }
 
-const client = new MongoClient(mongoUri);
+const client = new MongoClient(uri);
+const db = client.db(process.env.MONGODB_DATABASE || "bazardor");
 
 export const auth = betterAuth({
-  database: mongodbAdapter(client.db(process.env.MONGODB_DATABASE || "bazardor")),
-
+  database: mongodbAdapter(db, { client }),
   baseURL: process.env.BETTER_AUTH_URL,
   secret: process.env.BETTER_AUTH_SECRET,
 
