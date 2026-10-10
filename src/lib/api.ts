@@ -8,68 +8,127 @@ export type Category = {
   icon: string;
 };
 
-export async function getCategories(): Promise<Category[]> {
-  const response = await fetch(`${API_BASE_URL}/categories`, {
-    cache: "no-store",
+export type Market = {
+  market: string;
+  division: string;
+  min: number;
+  max: number;
+};
+
+export type Product = {
+  id: number;
+  slug: string;
+  nameBn: string;
+  category: string;
+  categoryNameBn: string;
+  categoryIcon: string;
+  unit: string;
+  image: string;
+  today: number;
+  yesterday: number;
+  lastWeek: number;
+  lastMonth: number;
+  change: {
+    dir: "up" | "down" | "flat";
+    pct: number;
+  };
+  markets: Market[];
+};
+
+async function fetchJson(path: string): Promise<unknown> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    next: { revalidate: 300 },
   });
 
   if (!response.ok) {
-    throw new Error("Categories load করা যায়নি");
+    throw new Error(
+      `API request failed: ${path} (status: ${response.status})`
+    );
   }
 
-  const result = await response.json();
-
-  // API array সরাসরি অথবা data property-তে দিতে পারে।
-  const categories = Array.isArray(result) ? result : result.data;
-
-  if (!Array.isArray(categories)) {
-    throw new Error("Categories API response সঠিক নয়");
-  }
-
-  return categories;
+  return response.json();
 }
 
-export async function getProducts() {
-  const response = await fetch(`${API_BASE_URL}/products`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error("Products load করা যায়নি");
+function extractArray<T>(result: unknown): T[] {
+  if (Array.isArray(result)) {
+    return result as T[];
   }
 
-  const result = await response.json();
+  if (result && typeof result === "object" && "data" in result) {
+    const data = result.data;
 
-  return Array.isArray(result) ? result : result.data ?? [];
+    if (Array.isArray(data)) {
+      return data as T[];
+    }
+  }
+
+  return [];
 }
 
-export async function getCategoryBySlug(slug: string) {
-  const response = await fetch(
-    `${API_BASE_URL}/categories/${encodeURIComponent(slug)}`,
-    { cache: "no-store" }
-  );
-
-  if (!response.ok) {
+function extractObject<T>(result: unknown): T | null {
+  if (!result || typeof result !== "object") {
     return null;
   }
 
-  const result = await response.json();
-  return result?.data ?? result;
-}
+  if ("data" in result) {
+    const data = result.data;
 
-export async function getProductsByCategory(slug: string) {
-  const response = await fetch(
-    `${API_BASE_URL}/products?category=${encodeURIComponent(slug)}`,
-    { cache: "no-store" }
-  );
-
-  if (!response.ok) {
-    throw new Error("Category products load করা যায়নি");
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      return data as T;
+    }
   }
 
-  const result = await response.json();
-  const data = Array.isArray(result) ? result : result?.data;
-
-  return Array.isArray(data) ? data : [];
+  return result as T;
 }
 
+export async function getCategories(): Promise<Category[]> {
+  const result = await fetchJson("/categories");
+  return extractArray<Category>(result);
+}
+
+export async function getProducts(): Promise<Product[]> {
+  const result = await fetchJson("/products");
+  return extractArray<Product>(result);
+}
+
+export async function getCategoryBySlug(
+  slug: string
+): Promise<Category | null> {
+  const result = await fetchJson(
+    `/categories/${encodeURIComponent(slug)}`
+  );
+
+  return extractObject<Category>(result);
+}
+
+export async function getProductsByCategory(
+  slug: string
+): Promise<Product[]> {
+  const products = await getProducts();
+  const normalizedSlug = decodeURIComponent(slug).trim().toLowerCase();
+
+  console.log("Requested category slug:", normalizedSlug);
+  console.log(
+    "Available categories:",
+    [...new Set(products.map((product) => product.category))]
+  );
+
+  return products.filter(
+    (product) =>
+      typeof product.category === "string" &&
+      product.category.trim().toLowerCase() === normalizedSlug
+  );
+}
+
+export async function getProductBySlug(
+  slug: string
+): Promise<Product | null> {
+  const products = await getProducts();
+
+  return (
+    products.find(
+      (product) =>
+        product.slug === slug || String(product.id) === slug
+    ) ?? null
+  );
+}
